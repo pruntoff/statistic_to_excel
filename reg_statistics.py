@@ -32,12 +32,12 @@ for idx, region in enumerate(regs):
     sys.stdout.write("\rAdding region to service centers list \n")
     sys.stdout.write("\rBanks progress: {0}> \n".format("="*idx))
     full_sc_list += [str(each) for each in pd.read_excel(
-            'data/dicts/regs_sc/{}.xlsx'.format(region))['raid'].tolist()]
+            'data/dicts/regs_sc/{}.xlsx'.format(region))['ID'].tolist()]
     sys.stdout.write("\rRegion in progress: {} \n".format(
             regions_names_dict[int(region)]))
     reg_df = pd.read_excel('data/dicts/regs_sc/{}.xlsx'.format(region))
 
-    raId_dict = reg_df['raid'].tolist()
+    raId_dict = reg_df['ID'].tolist()
     raId_dict = [str(each) for each in raId_dict]
 
     try:

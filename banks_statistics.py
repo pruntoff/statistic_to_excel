@@ -3,6 +3,7 @@
 import pandas as pd
 import argparse
 import os
+import sys
 import shutil
 import monitor_functions as mf
 import waves
@@ -11,6 +12,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-f', help='folder for report', dest='folder',
                     type=str)
 parser.add_argument('-i', help='getting name of csv file', dest='input_file',
+                    type=str)
+parser.add_argument('-b', help='get detailed table for bank', dest='det_bank',
                     type=str)
 
 args = parser.parse_args()
@@ -25,6 +28,7 @@ selectors = {
         'second_wave': waves.sec_wave_banks,
         'upd_first_wave': waves.updated_banks,
         'not_upd_first_wave': waves.not_updated_banks,
+        'problem_banks': waves.problem_banks
         }
 
 try:
@@ -44,6 +48,26 @@ except FileExistsError:
                     args.folder, args.folder, key))
     else:
         raise FileExistsError('Новый отчет не создан. Старый не тронут.')
+
+# TODO Make smth with that shit!!
+# df.to_excel('test.xls')
+df = df.loc[df['success'] != '200 414']
+df = df.loc[df['success'] != '202 414']
+df['success'] = mf.replace_433(df['success'])
+df['success'] = pd.to_numeric(
+        df['success'],
+        downcast='integer',
+        errors='coerce').fillna(df['success'])
+
+
+if args.det_bank and args.det_bank in mf.set_df_field(df, 'bank'):
+    mf.bank_detailed(df.loc[df['bank'] == args.det_bank], args)
+    print('Выполнено')
+    sys.exit(0)
+elif args.det_bank:
+    print('Указанный вами банк не найден. Необходимо точное наименование')
+else:
+    pass
 
 mf.output_tables(df, args)
 

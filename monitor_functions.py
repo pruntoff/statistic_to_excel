@@ -64,6 +64,20 @@ other_code_dicts = dict(zip(other_code[1], other_code[0]))
 
 # Service functions
 # I like useless things. Why not?
+def replace_433(series):
+    for idx, each in enumerate(series):
+        if isinstance(each, str):
+            try:
+                true_value = [int(i) for i in each.split(' ') if int(i) != 433]
+                if len(true_value) > 1:
+                    pass
+                else:
+                    series = series.replace(each, true_value[0])
+            except ValueError:
+                pass
+    return series
+
+
 def emptyDfError(func):
     def wrapper(*args, **kwargs):
         if args[0].shape[0] == 0:
@@ -470,3 +484,40 @@ def output_tables(df, args, folder=None):
     all_df.to_excel('reports/{0}/banks_total.xls'.format(folder),
                     index=False)
     sys.stdout.write("\n")
+
+
+def bank_detailed(df, args, folder=None):
+    if not folder:
+        folder = args.folder
+
+    old_col_names = [
+            'init_date_time',
+            'end_date_time',
+            'request_id',
+            'service_centre',
+            'success',
+            'bkk_photo_status_desc',
+            'bkk_sound_status_desc',
+            'smev_exit_code_description'
+            ]
+    new_col_names = [
+            'Время начала регистрации в ЕБС',
+            'Время окончания регистрации в ЕБС',
+            'Идентификатор транзакции',
+            'Центр Обслуживания',
+            'Успешность',
+            'Ошибка БКК по модальности фото',
+            'Ошибка БКК по модальности звук',
+            'Возвращенный код СМЭВ'
+            ]
+    col_zip = list(zip(old_col_names, new_col_names))
+    col_dict = {k: v for k, v in col_zip}
+    new_success = ['Успешно'
+                   if each == 200 or each == 202
+                   else 'Неуспешно'
+                   for each in df['success'].tolist()]
+    output_df = df.loc[:, old_col_names]
+    output_df['success'] = new_success
+    output_df = output_df.rename(columns=col_dict)
+    output_df.to_excel('reports/{0}/detailed_report.xls'.format(folder),
+                       index=False)
