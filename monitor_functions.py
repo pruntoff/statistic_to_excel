@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import re
 import sys
+import waves
 
 """
 Functions:
@@ -39,7 +40,7 @@ Functions:
     - error_count(df, error, photo=None, sound=None, other=None):
     count number of given error in dataframe.
 
-    -form_table(df, columns): return dict you can use to output to the file;
+    - form_table(df, columns): return dict you can use to output to the file;
     The main table with dates and errors stuff.
 
     - total2df(df, columns): return dict you can use to output to the file;
@@ -57,9 +58,12 @@ Functions:
 photo_code = pd.read_excel('data/dicts/photo_codes.xlsx', header=None)
 sound_code = pd.read_excel('data/dicts/sound_codes.xlsx', header=None)
 other_code = pd.read_excel('data/dicts/other_codes.xlsx', header=None)
+bank_names = pd.read_excel('data/dicts/bank_names.xlsx', header=None)
 photo_code_dicts = dict(zip(photo_code[1], photo_code[0]))
 sound_code_dicts = dict(zip(sound_code[1], sound_code[0]))
 other_code_dicts = dict(zip(other_code[1], other_code[0]))
+bank_names_dict = dict(zip(bank_names[1], bank_names[0]))
+bank_names_dict = {str(k): v for k, v in bank_names_dict.items()}
 
 
 # Service functions
@@ -74,8 +78,82 @@ def replace_433(series):
                 else:
                     series = series.replace(each, true_value[0])
             except ValueError:
-                pass
+                try:
+                    true_value = [int(i)
+                                  for i in each.split('\n') if int(i) != 433]
+                    if len(true_value) > 1:
+                        pass
+                    else:
+                        series = series.replace(each, true_value[0])
+                except ValueError:
+                    pass
     return series
+
+
+def double_error_match(series):
+    if len(series['success'].split(' ')) > 1:
+        return series['success'].split(' ')
+    elif len(series['success'].split('\n')) > 1:
+        return series['success'].split('\n')
+
+
+def define_reg(reg):
+    if int(reg[8]) == 200 or int(reg[8]) == 202:
+        reg[10:] = [np.nan for i in range(len(reg[10:]))]
+        return reg
+    if int(reg[8]) != 200 or int(reg[8]) != 202:
+        return reg
+
+
+def replace_double_error(df):
+    for idx, row in df.iterrows():
+        if isinstance(row['success'], str) and len(row['success']) > 3 and re.match('[0-9]', row['success']):
+            double_error = double_error_match(row)
+            if '200' in double_error or '202' in double_error:
+                first_reg, second_reg = (row.tolist(), row.tolist())
+                first_reg[8] = double_error.pop(0)
+                second_reg[8] = double_error.pop(0)
+                first_reg = define_reg(first_reg)
+                second_reg = define_reg(second_reg)
+                df.append([first_reg, second_reg], ignore_index=True)
+                df = df.drop(idx)
+            else:
+                pass
+        else:
+            pass
+    return df
+
+
+def clear_df(df):
+    df = df.loc[df['info_system'] != '-']
+    df = rewrite_bank_names(df)
+    df = df.loc[df['success'] != '413\n500']
+    df = df.loc[df['success'] != '413\n414']
+    df['success'] = replace_433(df['success'])
+    df = replace_double_error(df)
+    df['success'] = df['success'].replace('SMEV_FAIL', 505)
+    df['success'] = pd.to_numeric(
+        df['success'],
+        downcast='integer',
+        errors='coerce').fillna(df['success'])
+    return df
+
+
+def third_wave():
+    two_waves = waves.first_wave_banks + waves.sec_wave_banks
+    third_wave_banks = [value
+                        for key, value
+                        in bank_names_dict.items()
+                        if value not in two_waves]
+    return third_wave_banks
+
+
+def rewrite_bank_names(df):
+    new_names = [bank_names_dict[mnemonic]
+                 for mnemonic
+                 in df['info_system'].tolist()]
+    df['bank'] = new_names
+    return df
 
 
 def emptyDfError(func):
@@ -175,10 +253,14 @@ def set_column_names(df):
                                    (filtered_df['success'] != 414)]
     other_codes = set_df_field(_filtered_df, 'success')
     oerrors_name = [other_code_dicts[int(error)] for error in set(other_codes)]
+    _filtered_df = filtered_df.loc[(filtered_df['success'] == 505)]
+    error505 = list(set(['{}'.format(error)
+                    for error in _filtered_df['smev_exit_code_description']]))
+    oerrors_name = oerrors_name + error505
     _filtered_df = filtered_df.loc[(filtered_df['success'] == 414)]
-    error414 = list(set(['{0}. Модальность: {1}'.format(
-                other_code_dicts[414], error.split('[')[1])
-                for error in _filtered_df['smev_exit_code_description']]))
+    error414 = list(set([error
+                         for error
+                         in _filtered_df['smev_exit_code_description']]))
     oerrors_name = oerrors_name + error414
     _filtered_df = df.loc[(df['success'].isna()) &
                           (df[codes[0]].isna()) &

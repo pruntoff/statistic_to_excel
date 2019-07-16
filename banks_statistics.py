@@ -28,7 +28,9 @@ selectors = {
         'second_wave': waves.sec_wave_banks,
         'upd_first_wave': waves.updated_banks,
         'not_upd_first_wave': waves.not_updated_banks,
-        'problem_banks': waves.problem_banks
+        'problem_banks': waves.problem_banks,
+        'fw_cb_banks': waves.fw_cb_banks,
+        'third_wave': mf.third_wave()
         }
 
 try:
@@ -49,16 +51,9 @@ except FileExistsError:
     else:
         raise FileExistsError('Новый отчет не создан. Старый не тронут.')
 
-# TODO Make smth with that shit!!
-# df.to_excel('test.xls')
-df = df.loc[df['success'] != '200 414']
-df = df.loc[df['success'] != '202 414']
-df['success'] = mf.replace_433(df['success'])
-df['success'] = pd.to_numeric(
-        df['success'],
-        downcast='integer',
-        errors='coerce').fillna(df['success'])
+df.to_excel('{}.xls'.format(args.folder))
 
+df = mf.clear_df(df)
 
 if args.det_bank and args.det_bank in mf.set_df_field(df, 'bank'):
     mf.bank_detailed(df.loc[df['bank'] == args.det_bank], args)

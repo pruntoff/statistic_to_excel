@@ -26,7 +26,23 @@ regions_names_dict = pd.read_excel('data/dicts/region_codes.xlsx').set_index(
         'region_code').to_dict()['region_name']
 
 full_sc_list = []
-os.makedirs('reports/reg/NW_region/{0}'.format(args.folder))
+os.makedirs('reports/reg/sib_region/{0}'.format(args.folder))
+
+df = df.loc[df['info_system'] != '-']
+df = mf.rewrite_bank_names(df)
+try:
+    df = df.loc[df['success'] != '200 414']
+    df = df.loc[df['success'] != '200\n202']
+    df = df.loc[df['success'] != '202 414']
+    df = df.loc[df['success'] != '413\n414']
+except TypeError:
+    pass
+
+df['success'] = mf.replace_433(df['success'])
+df['success'] = pd.to_numeric(
+        df['success'],
+        downcast='integer',
+        errors='coerce').fillna(df['success'])
 
 for idx, region in enumerate(regs):
     sys.stdout.write("\rAdding region to service centers list \n")
@@ -52,6 +68,8 @@ for idx, region in enumerate(regs):
             regions_names_dict[int(region)], args.folder))
     sys.stdout.flush()
 
+
+
 # this is too slow need O(*) improovement
 nw_df = df.loc[df['service_centre'].isin(full_sc_list)]
-mf.output_tables(nw_df, args, folder='reg/NW_region/{0}'.format(args.folder))
+mf.output_tables(nw_df, args, folder='reg/sib_region/{0}'.format(args.folder))
