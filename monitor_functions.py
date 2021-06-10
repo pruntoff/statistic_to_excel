@@ -29,7 +29,7 @@ Functions:
 
     - df_by_dates(df, *args): returns df for dates in *args;
     args format is '%Y-%m-%d'; df checked for emptiness
-
+    
     - error_format(error): checks for int(error).
     if not, tries to make list of errors (like ['104', '108'])
 
@@ -73,7 +73,7 @@ def replace_433(series):
         if isinstance(each, str):
             try:
                 true_value = [int(i) for i in each.split(' ') if int(i) != 433]
-                if len(true_value) > 1:
+                if len(true_value) > 1 or len(true_value) == 0:
                     pass
                 else:
                     series = series.replace(each, true_value[0])
@@ -127,8 +127,12 @@ def replace_double_error(df):
 def clear_df(df):
     df = df.loc[df['info_system'] != '-']
     df = rewrite_bank_names(df)
-    df = df.loc[df['success'] != '413\n500']
-    df = df.loc[df['success'] != '413\n414']
+    df = df.loc[[False if each == '413\n500' else True for each in df['success'].tolist()]]
+    df = df.loc[[False if each == '413\n414' else True for each in df['success'].tolist()]]
+    df = df.loc[[False if each == '200\n406' else True for each in df['success'].tolist()]]
+    #df = df.loc[df['success'] != '413\n500']
+    #df = df.loc[df['success'] != '413\n414']
+    #df = df.loc[df['success'] != '200\n406']
     df['success'] = replace_433(df['success'])
     df = replace_double_error(df)
     df['success'] = df['success'].replace('SMEV_FAIL', 505)
@@ -140,7 +144,7 @@ def clear_df(df):
 
 
 def third_wave():
-    two_waves = waves.first_wave_banks + waves.sec_wave_banks
+    two_waves = waves.fs_banks+['ПАО  "СБЕРБАНК РОССИИ"']
     third_wave_banks = [value
                         for key, value
                         in bank_names_dict.items()
@@ -200,7 +204,7 @@ def get_df_by_condition(df, *args, used_args=0):
 
 
 def date_match(date_string, *args):
-    dt = datetime.strptime(date_string, '%Y.%m.%d %H:%M:%S')
+    dt = datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
     # datetime matching list - dtml
     dtml = [datetime.strptime(arg, '%Y-%m-%d').date() for arg in args]
     if dt.date() in dtml:
@@ -241,11 +245,13 @@ def set_column_names(df):
 
     photo_codes = set_df_field(df, codes[0])
     perrors = [error_format(each) for each in photo_codes]
-    perrors = [each for sublist in perrors for each in sublist if each != '0']
+    perrors = [each for sublist in perrors for each in sublist if each != '0' and each != 0 and each != '\\N']
     perrors_name = [photo_code_dicts[int(error)] for error in set(perrors)]
 
     sound_codes = set_df_field(df, codes[1])
-    serrors_name = [sound_code_dicts[int(error)] for error in set(sound_codes)]
+    serrors = [error_format(each) for each in sound_codes]
+    serrors = [each for sublist in serrors for each in sublist if each != '0' or 0]
+    serrors_name = [sound_code_dicts[int(error)] for error in sound_codes if error != '0' and error != 0 and error != '\\N']
 
     filtered_df = df_notna(df, 'success')
     _filtered_df = filtered_df.loc[(filtered_df['success'] != 200) &
@@ -276,7 +282,7 @@ def get_code_from_val(code_dict, val):
         # separates the dictionary's values in a list, finds the position of
         # the value you have, and gets the key at that position
         # https://stackoverflow.com/questions/8023306/get-key-by-value-in-dictionary
-        return str(list(code_dict.keys())[list(code_dict.values()).index(val)])
+        return str(int(list(code_dict.keys())[list(code_dict.values()).index(val)]))
     except ValueError:
 
         return val
@@ -288,26 +294,43 @@ def error_count(df, error, photo=None, sound=None, other=None):
              'smev_exit_code_description']
     if photo:
         error = get_code_from_val(photo_code_dicts, error)
-        mask = [True
-                if pd.notna(each)
-                and str(error) in str(each)
-                else False
-                for each in df[codes[0]]]
+        try:
+            mask = [True
+                    if pd.notna(each)
+            and each != "\\N"
+                    and int(error) == int(each)
+                    else False
+                    for each in df[codes[0]]]
+        except ValueError:
+            mask = [True
+                    if pd.notna(each)
+                       and each != "\\N"
+                       and error in each.strip().split(',') #each can be '1048576,2097152'
+                    else False
+                    for each in df[codes[0]]]
     elif sound:
         error = get_code_from_val(sound_code_dicts, error)
-        mask = [True
-                if pd.notna(each)
-                and str(error) in str(each)
-                else False
-                for each in df[codes[1]]]
+        try:
+            mask = [True
+                    if pd.notna(each)
+                       and each != "\\N"
+                       and int(error) == int(each)
+                    else False
+                    for each in df[codes[1]]]
+        except ValueError:
+            mask = [True
+                    if pd.notna(each)
+                       and each != "\\N"
+                       and error in each.strip().split(',')  # each can be '1048576,2097152'
+                    else False
+                    for each in df[codes[1]]]
     # it is urgly :(
     elif other:
         try:
             error = get_code_from_val(other_code_dicts, error)
             mask = [True
                     if pd.notna(each)
-                    # I can not understand why
-                    # str(error) == str(each) not working
+		    and each != "\\N"
                     and float(error) == each
                     else False
                     for each in df['success']]
@@ -334,7 +357,7 @@ def error_count(df, error, photo=None, sound=None, other=None):
 
 def form_table(df, columns):
     dates_list = list(set(str(datetime.strptime(each,
-                                                '%Y.%m.%d %H:%M:%S').date())
+                                                '%Y-%m-%d %H:%M:%S').date())
                       for each in df['init_date_time']))
 
     table = {}
@@ -374,14 +397,20 @@ def form_table(df, columns):
                     sum(table['Всего неуспешных']) /
                     sum(table['Всего попыток регистрации'])]
 
+    #photo errors
     for error in columns[1]:
         table[error] = [error_count(df_by_dates(df, date), error, photo=True)
                         for date in dates_list]
         table[error] = table[error]+[sum(table[error])]
+        #print(photo_code_dicts)
+        #print(error, photo_code_dicts[error])
+
+    #sound errors
     for error in columns[2]:
         table[error] = [error_count(df_by_dates(df, date), error, sound=True)
                         for date in dates_list]
         table[error] = table[error]+[sum(table[error])]
+    #other errors
     for error in columns[3]:
         table[error] = [error_count(df_by_dates(df, date), error, other=True)
                         for date in dates_list]
@@ -449,7 +478,7 @@ def df2table(df, writer, bank):
 
     if len(bank) >= 30:
         bank = bank[0:30]
-    output_df.to_excel(writer, sheet_name=bank, index=False)
+    output_df.to_excel(writer, sheet_name=bank, index=False, na_rep='NA')
 
     workbook = writer.book
     worksheet = writer.sheets[bank]
@@ -556,15 +585,15 @@ def output_tables(df, args, folder=None):
         writer = pd.ExcelWriter('reports/{0}/{1}_{2}.xlsx'.format(
                                 folder,
                                 rebank(bank), args.folder),
-                                engine='xlsxwriter')
+                                engine='xlsxwriter', options={'nan_inf_to_errors': True})
         df2table(df, writer, bank)
         writer.save()
         sys.stdout.flush()
 
     all_df = pd.DataFrame.from_dict(total2df(df, set_column_names(df)))
     all_df = all_df[all_df['Всего попыток регистрации'] != 0]
-    all_df.to_excel('reports/{0}/banks_total.xls'.format(folder),
-                    index=False)
+    all_df.to_excel('reports/{0}/banks_total.xlsx'.format(folder),
+                    index=False, na_rep='NA')
     sys.stdout.write("\n")
 
 
@@ -574,17 +603,15 @@ def bank_detailed(df, args, folder=None):
 
     old_col_names = [
             'init_date_time',
-            'end_date_time',
             'request_id',
             'service_centre',
             'success',
-            'bkk_photo_status_desc',
-            'bkk_sound_status_desc',
+            'bkk_photo_status_code',
+            'bkk_sound_status_code',
             'smev_exit_code_description'
             ]
     new_col_names = [
             'Время начала регистрации в ЕБС',
-            'Время окончания регистрации в ЕБС',
             'Идентификатор транзакции',
             'Центр Обслуживания',
             'Успешность',
@@ -598,8 +625,42 @@ def bank_detailed(df, args, folder=None):
                    if each == 200 or each == 202
                    else 'Неуспешно'
                    for each in df['success'].tolist()]
+
+
+    new_photo_code = []
+    for error in df['bkk_photo_status_code']:
+        try:
+            if (pd.notna(error) and error != '\\N'):
+                new_photo_code.append(photo_code_dicts[int(error)])
+            else:
+                new_photo_code.append('')
+        except ValueError:
+            if (pd.notna(error) and error != '\\N'):
+                error_list = error.strip().split(',')
+                text_list = [photo_code_dicts[int(e)] for e in error_list]
+                new_photo_code.append(' | '.join(text_list))
+            else:
+                new_photo_code.append('')
+
+    new_sound_code = []
+    for error in df['bkk_sound_status_code']:
+        try:
+            if (pd.notna(error) and error != '\\N'):
+                new_sound_code.append(sound_code_dicts[int(error)])
+            else:
+                new_sound_code.append('')
+        except ValueError:
+            if (pd.notna(error) and error != '\\N'):
+                error_list = error.strip().split(',')
+                text_list = [sound_code_dicts[int(e)] for e in error_list]
+                new_sound_code.append(' | '.join(text_list))
+            else:
+                new_sound_code.append('')
+
     output_df = df.loc[:, old_col_names]
     output_df['success'] = new_success
+    output_df['bkk_photo_status_code'] = new_photo_code
+    output_df['bkk_sound_status_code'] = new_sound_code
     output_df = output_df.rename(columns=col_dict)
-    output_df.to_excel('reports/{0}/detailed_report.xls'.format(folder),
+    output_df.to_excel('reports/{0}/{1}.xlsx'.format(folder, folder),
                        index=False)
